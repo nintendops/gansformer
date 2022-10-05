@@ -1,5 +1,6 @@
 ﻿import numpy as np
 import torch
+import torch.nn.functional as F
 import math
 from training import misc
 from torch_utils import misc as torch_misc
@@ -1308,6 +1309,84 @@ class Generator(torch.nn.Module):
             return_tensor = True
 
         _input = z if z is not None else ws
+        mask = random_dp_binary([_input.shape[0], self.k - 1], self.component_dropout, self.training, _input.device)
+
+        if ws is None:
+            ws = self.mapping(z, c, pos = self.pos, mask = mask, truncation_psi = truncation_psi, truncation_cutoff = truncation_cutoff)
+        torch_misc.assert_shape(ws, [None, self.k, self.num_ws, self.w_dim])
+
+        ret = ()
+        if return_img or return_att:
+            img, att_maps = self.synthesis(ws, pos = self.pos, mask = mask, **synthesis_kwargs)
+            if return_img:  ret += (img, )
+            if return_att:  ret += (att_maps, )
+
+        if return_ws:  ret += (ws, )
+
+        if return_tensor:
+            ret = ret[0]
+
+        return ret
+
+@persistence.persistent_class
+class CodebookGenerator(torch.nn.Module):
+    def __init__(self,
+        z_dim,                      # Input latent (Z) dimensionality
+        c_dim,                      # Conditioning label (C) dimensionality
+        w_dim,                      # Intermediate latent (W) dimensionality
+        k,                          # Number of latent vector components z_1,...,z_k
+        img_resolution,             # Output resolution
+        img_channels,               # Number of output color channels
+        component_dropout   = 0.0,  # Dropout over the latent components, 0 = disable
+        mapping_kwargs      = {},   # Arguments for MappingNetwork
+        synthesis_kwargs    = {},   # Arguments for SynthesisNetwork
+        **_kwargs                   # Ignore unrecognized keyword args
+    ):
+        super().__init__()
+        
+        self.z_dim = z_dim
+        self.c_dim = c_dim
+        self.w_dim = w_dim
+        self.k = k
+        self.img_resolution = img_resolution
+        self.img_channels = img_channels
+        self.component_dropout = component_dropout
+
+        self.input_shape = [None, k, z_dim]
+        self.cond_shape  = [None, c_dim]
+
+        # codebook containing mu, log_var for reparameterization 
+        self.codebook = torch.nn.Parameter(torch.zeros(k, 2*z_dim))
+
+        self.pos = get_embeddings(k - 1, w_dim)
+
+        self.synthesis = SynthesisNetwork(w_dim = w_dim, k = k, img_resolution = img_resolution, 
+            img_channels = img_channels, **synthesis_kwargs)
+        self.num_ws = self.synthesis.num_ws
+
+        self.mapping = MappingNetwork(z_dim = z_dim, c_dim = c_dim, w_dim = w_dim, k = k, 
+            num_broadcast = self.num_ws, **mapping_kwargs)
+
+    def reparameterize(self, z):
+        # (k, z_dim) for mu, sigma
+        mu, logvar = self.codebook.chunk(2, dim=1)
+        std = torch.exp(0.5 * logvar)
+        return std[None] * z + mu[None]
+
+    def forward(self, z = None, c = None, ws = None, truncation_psi = 1, truncation_cutoff = None, return_img = True, 
+        return_att = False, return_ws = False, subnet = None, **synthesis_kwargs):
+        return_tensor = False
+        if subnet is not None:
+            return_ws = (subnet == "mapping")
+            return_img = (subnet == "synthesis")
+            return_att = False
+            return_tensor = True
+
+        if z is not None:
+            z = self.reparameterize(z)
+
+        _input = z if z is not None else ws
+
         mask = random_dp_binary([_input.shape[0], self.k - 1], self.component_dropout, self.training, _input.device)
 
         if ws is None:

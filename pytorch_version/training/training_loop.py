@@ -337,7 +337,7 @@ def training_loop(
     # Evaluation
     vis_args                = {},       # Options for vis.vis
     metrics                 = [],       # Metrics to evaluate during training
-    eval_images_num         = 50000,    # Sample size for the metrics
+    eval_images_num         = 200,    # Sample size for the metrics
     truncation_psi          = 0.7       # Style strength multiplier for the truncation trick (used for visualizations only)
 ):  
     # Initialize

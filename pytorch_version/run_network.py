@@ -76,6 +76,7 @@ def setup_config(run_dir, **args):
 
         gammas = {
             "ffhq": 10, 
+            'USC_Galen_Center': 10,
             "cityscapes": 20, 
             "clevr": 40, 
             "bedrooms": 100
@@ -133,7 +134,8 @@ def setup_config(run_dir, **args):
         "clevr": 0.75,
         "bedrooms": 188/256, 
         "cityscapes": 0.5,
-        "ffhq": 1.0
+        "ffhq": 1.0,
+        "USC_Galen_Center": 1.0,
     }
     args.ratio = args.ratio or ratios.get(args.dataset, 1.0)
     args.crop_ratio = 0.5 if args.resolution > 256 and args.ratio < 0.5 else None
@@ -143,7 +145,7 @@ def setup_config(run_dir, **args):
         cset(train, arg, args[arg])
     
     dataset_args = EasyDict(
-        class_name     = "training.dataset.ImageFolderDataset", 
+        class_name     = "training.dataset.CroppedImageDataset", #ImageFolderDataset
         path           = f"{args.data_dir}/{args.dataset}",
         max_items      = args.train_images_num, 
         resolution     = args.resolution,
@@ -159,7 +161,7 @@ def setup_config(run_dir, **args):
     # Optimization setup
     # ----------------------------------------------------------------------------
 
-    cG = set_net("Generator", ["mapping", "synthesis"], args.g_lr, 4)
+    cG = set_net("CodebookGenerator", ["mapping", "synthesis"], args.g_lr, 4)
     cD = set_net("Discriminator", ["mapping", "block", "epilogue"], args.d_lr, 16)
     cset([cG, cD], "crop_ratio", args.crop_ratio)
 
@@ -474,7 +476,7 @@ def main():
     parser.add_argument("--truncation-psi",     help = "Truncation Psi to be used in producing sample images " +
                                                        "(used only for visualizations, _not used_ in training or for computing metrics) (default: %(default)s)", default = 0.75, type = float)
     parser.add_argument("--keep-samples",       help = "Keep all prior samples during training, or if False, just the most recent ones (default: %(default)s)", default = True, metavar = "BOOL", type = _str_to_bool, nargs = "?")
-    parser.add_argument("--eval-images-num",    help = "Number of images to evaluate metrics on (default: 50,000)", default = None, type = int)
+    parser.add_argument("--eval-images-num",    help = "Number of images to evaluate metrics on (default: 200)", default = None, type = int)
 
     ## Visualization
     parser.add_argument("--vis-images",         help = "Save image samples", default = None, action = "store_true")
