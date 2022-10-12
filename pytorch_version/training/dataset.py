@@ -117,6 +117,44 @@ class Dataset(torch.utils.data.Dataset):
         return self.labels.dtype == np.int64
 
 #----------------------------------------------------------------------------
+import albumentations
+
+class CroppedImageDataset(Dataset):
+    def __init__(self, path, resolution, **kwargs):
+        self.suffix = "JPG"
+        self.path = path
+        if not os.path.exists(f"{path}"):
+            misc.error(f"Dataset folder {path} doesn't exists. Follow data preparation instructions using the prepare_data.py script.")
+
+        self.img_files = sorted(glob.glob(f"{path}/*.{self.suffix}"))
+        self.img_files = self.img_files * 20
+        self._initialize_processor(resolution)    
+
+        misc.log(f"Found {len(self.img_files)} images in the dataset.")
+        name = os.path.splitext(os.path.basename(self.path))[0]        
+        shape = [len(self.img_files)] + list(self._load_image(0).shape)    
+        super().__init__(name = name, shape = shape, **kwargs)
+
+    def _initialize_processor(self, cropped_res, rescaled_res=512):
+        rescaler = albumentations.SmallestMaxSize(max_size=rescaled_res)
+        cropper = albumentations.RandomCrop(height=cropped_res, width=cropped_res)
+        hflipper = albumentations.HorizontalFlip(p=0.5)
+        # self.vflipper = albumentations.VerticalFlip(p=0.5)
+        self.preprocessor = albumentations.Compose(
+            [rescaler, cropper, hflipper])
+
+    def _load_image(self, idx):
+        with open(self.img_files[idx], "rb") as f:
+            image = np.array(PIL.Image.open(f))
+        if image.ndim == 2:
+            image = image[:, :, np.newaxis] # HW => HWC
+        image = self.preprocessor(image=image)["image"]
+        image = image.transpose(2, 0, 1) # HWC => CHW
+        return image
+
+    def _load_labels(self):
+        return np.zeros([self.shape[0], 0], dtype = np.float32)
+#---------------------------------------------------------------------------------
 
 class ImageFolderDataset(Dataset):
     def __init__(self, path, resolution, **kwargs):
@@ -130,10 +168,12 @@ class ImageFolderDataset(Dataset):
         name = os.path.splitext(os.path.basename(self.path))[0]
         
         shape = [len(self.img_files)] + list(self._load_image(0).shape)
+
         if resolution is not None and (shape[2] != resolution or shape[3] != resolution):
             misc.error("Image files do not match the specified resolution")
         
         super().__init__(name = name, shape = shape, **kwargs)
+
 
     def _load_image(self, idx):
         with open(self.img_files[idx], "rb") as f:

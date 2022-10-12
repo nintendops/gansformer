@@ -76,6 +76,7 @@ def setup_config(run_dir, **args):
 
         gammas = {
             "ffhq": 10, 
+            'USC_Galen_Center': 10,
             "cityscapes": 20, 
             "clevr": 40, 
             "bedrooms": 100
@@ -133,7 +134,8 @@ def setup_config(run_dir, **args):
         "clevr": 0.75,
         "bedrooms": 188/256, 
         "cityscapes": 0.5,
-        "ffhq": 1.0
+        "ffhq": 1.0,
+        "USC_Galen_Center": 1.0,
     }
     args.ratio = args.ratio or ratios.get(args.dataset, 1.0)
     args.crop_ratio = 0.5 if args.resolution > 256 and args.ratio < 0.5 else None
@@ -143,7 +145,7 @@ def setup_config(run_dir, **args):
         cset(train, arg, args[arg])
     
     dataset_args = EasyDict(
-        class_name     = "training.dataset.ImageFolderDataset", 
+        class_name     = "training.dataset.CroppedImageDataset", #ImageFolderDataset
         path           = f"{args.data_dir}/{args.dataset}",
         max_items      = args.train_images_num, 
         resolution     = args.resolution,
